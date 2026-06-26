@@ -9,7 +9,7 @@ namespace BlockSpectate;
 public class BlockSpectate : BasePlugin
 {
     public override string ModuleName => "BlockSpectate";
-    public override string ModuleVersion => "1.6.0";
+    public override string ModuleVersion => "1.7.0";
     public override string ModuleAuthor => "ZAADROT.UZ";
     public override string ModuleDescription => "Players who join spectator mid-game skip next round";
 
@@ -41,9 +41,9 @@ public class BlockSpectate : BasePlugin
                 if (!player.IsValid || player.IsBot) continue;
                 if (!_skipNextRound.Contains(player.SteamID)) continue;
 
-                // Force spectator with proper spec mode so no black screen
-                player.SwitchTeam(CsTeam.Spectator);
-                player.ExecuteClientCommand("spec_mode 4");
+                if (player.TeamNum != (int)CsTeam.Spectator)
+                    player.SwitchTeam(CsTeam.Spectator);
+
                 player.PrintToChat($" \x01[\x04ZAADROT\x01] \x07Вы пропускаете этот раунд!");
             }
 
@@ -80,7 +80,6 @@ public class BlockSpectate : BasePlugin
         {
             if (player == null || !player.IsValid) return;
             player.SwitchTeam(CsTeam.Spectator);
-            player.ExecuteClientCommand("spec_mode 4");
             player.PrintToChat($" \x01[\x04ZAADROT\x01] \x07Вы пропускаете этот раунд!");
         });
 
