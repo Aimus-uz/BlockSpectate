@@ -9,14 +9,11 @@ namespace BlockSpectate;
 public class BlockSpectate : BasePlugin
 {
     public override string ModuleName => "BlockSpectate";
-    public override string ModuleVersion => "1.2.0";
+    public override string ModuleVersion => "1.6.0";
     public override string ModuleAuthor => "ZAADROT.UZ";
-    public override string ModuleDescription => "Players who join spectator mid-game skip current and next round respawn";
+    public override string ModuleDescription => "Players who join spectator mid-game skip next round";
 
     private bool _isWarmup = true;
-
-    // Players who went to spectator during live game - they must wait 1 extra round
-    private HashSet<ulong> _spectatedThisRound = new();
     private HashSet<ulong> _skipNextRound = new();
 
     public override void Load(bool hotReload)
@@ -37,11 +34,22 @@ public class BlockSpectate : BasePlugin
     {
         if (_isWarmup) return HookResult.Continue;
 
-        // Players who were in spectator last round now skip this round
-        foreach (var steamId in _spectatedThisRound)
-            _skipNextRound.Add(steamId);
+        Server.NextFrame(() =>
+        {
+            foreach (var player in Utilities.GetPlayers())
+            {
+                if (!player.IsValid || player.IsBot) continue;
+                if (!_skipNextRound.Contains(player.SteamID)) continue;
 
-        _spectatedThisRound.Clear();
+                // Force spectator with proper spec mode so no black screen
+                player.SwitchTeam(CsTeam.Spectator);
+                player.ExecuteClientCommand("spec_mode 4");
+                player.PrintToChat($" \x01[\x04ZAADROT\x01] \x07Вы пропускаете этот раунд!");
+            }
+
+            _skipNextRound.Clear();
+        });
+
         return HookResult.Continue;
     }
 
@@ -51,20 +59,12 @@ public class BlockSpectate : BasePlugin
 
         var player = @event.Userid;
         if (player == null || !player.IsValid || player.IsBot) return HookResult.Continue;
+        if (@event.Team != (int)CsTeam.Spectator) return HookResult.Continue;
+        if (AdminManager.PlayerHasPermissions(player, "@css/generic")) return HookResult.Continue;
 
-        // Player going TO spectator
-        if (@event.Team == (int)CsTeam.Spectator)
-        {
-            // Admins can spectate freely
-            if (AdminManager.PlayerHasPermissions(player, "@css/generic"))
-                return HookResult.Continue;
+        _skipNextRound.Add(player.SteamID);
+        player.PrintToChat($" \x01[\x04ZAADROT\x01] \x07Вы пропустите следующий раунд!");
 
-            // Mark this player - they went to spec during live game
-            _spectatedThisRound.Add(player.SteamID);
-            player.PrintToChat($" \x01[\x04ZAADROT\x01] \x07Вы пропустите следующий раунд!");
-        }
-
-        // Player leaving spectator - remove from skip list after 1 round delay handled in spawn
         return HookResult.Continue;
     }
 
@@ -74,23 +74,15 @@ public class BlockSpectate : BasePlugin
 
         var player = @event.Userid;
         if (player == null || !player.IsValid || player.IsBot) return HookResult.Continue;
+        if (!_skipNextRound.Contains(player.SteamID)) return HookResult.Continue;
 
-        if (_skipNextRound.Contains(player.SteamID))
+        Server.NextFrame(() =>
         {
-            _skipNextRound.Remove(player.SteamID);
-
-            // Kill them immediately so they can't play this round
-            Server.NextFrame(() =>
-            {
-                if (player == null || !player.IsValid) return;
-                var pawn = player.PlayerPawn?.Value;
-                if (pawn != null && pawn.IsValid)
-                {
-                    pawn.CommitSuicide(false, true);
-                    player.PrintToChat($" \x01[\x04ZAADROT\x01] \x07Вы пропустили раунд за выход в spectator!");
-                }
-            });
-        }
+            if (player == null || !player.IsValid) return;
+            player.SwitchTeam(CsTeam.Spectator);
+            player.ExecuteClientCommand("spec_mode 4");
+            player.PrintToChat($" \x01[\x04ZAADROT\x01] \x07Вы пропускаете этот раунд!");
+        });
 
         return HookResult.Continue;
     }
